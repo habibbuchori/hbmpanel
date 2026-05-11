@@ -47,6 +47,29 @@ warn()   { printf "%s ! %s%s\n" "$C_YELLOW" "$*" "$C_RESET" | tee -a "$INSTALL_L
 err()    { printf "%s ✗ %s%s\n" "$C_RED" "$*" "$C_RESET" | tee -a "$INSTALL_LOG" >&2; }
 die()    { err "$*"; exit 1; }
 
+# ---------- retry helper (resilient untuk network unstable) ----------
+retry_cmd() {
+  local max_attempts=5
+  local timeout=30
+  local attempt=1
+  local delay=5
+
+  while [ $attempt -le $max_attempts ]; do
+    log "attempt $attempt/$max_attempts: $*"
+    if timeout $timeout "$@"; then
+      return 0
+    fi
+    if [ $attempt -lt $max_attempts ]; then
+      warn "attempt $attempt gagal, retry dalam ${delay}s..."
+      sleep $delay
+      delay=$((delay + 5))
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
 # ---------- marker (idempotency) ----------
 mark_done() { mkdir -p "$MARKER_DIR"; touch "$MARKER_DIR/$1"; }
 is_done()   { [ -f "$MARKER_DIR/$1" ]; }
@@ -161,9 +184,9 @@ sys_firewall() {
 
 install_caddy() {
   if command -v caddy >/dev/null; then return 0; fi
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  retry_cmd curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
     | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  retry_cmd curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
     | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
   apt-get update -qq >>"$INSTALL_LOG" 2>&1
   apt-get install -y -qq caddy >>"$INSTALL_LOG" 2>&1
@@ -172,7 +195,7 @@ install_caddy() {
 
 install_php() {
   if command -v php8.4 >/dev/null; then return 0; fi
-  curl -sSLo /tmp/sury.gpg https://packages.sury.org/php/apt.gpg
+  retry_cmd curl -sSLo /tmp/sury.gpg https://packages.sury.org/php/apt.gpg
   install -m 0644 /tmp/sury.gpg /usr/share/keyrings/sury-php.gpg
   echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" \
     > /etc/apt/sources.list.d/sury-php.list
@@ -187,7 +210,7 @@ install_php() {
 install_postgres() {
   if command -v psql >/dev/null; then return 0; fi
   install -d /usr/share/postgresql-common/pgdg
-  curl -sSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  retry_cmd curl -sSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
     https://www.postgresql.org/media/keys/ACCC4CF8.asc
   echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -sc)-pgdg main" \
     > /etc/apt/sources.list.d/pgdg.list
@@ -262,7 +285,7 @@ panel_download() {
   esac
 
   if [ "$PANEL_VERSION" = "latest" ]; then
-    tag=$(curl -fsSL "https://api.github.com/repos/${GH_REPO}/releases/latest" \
+    tag=$(retry_cmd curl -fsSL "https://api.github.com/repos/${GH_REPO}/releases/latest" \
       | jq -r '.tag_name' 2>/dev/null || echo "")
     if [ -z "$tag" ] || [ "$tag" = "null" ]; then
       warn "tidak bisa fetch release terbaru dari ${GH_REPO} — installer akan skip download binary."
@@ -275,7 +298,7 @@ panel_download() {
 
   url="https://github.com/${GH_REPO}/releases/download/${tag}/hbmpanel-linux-${arch}.tar.gz"
   log "download $url"
-  curl -fSL "$url" -o /tmp/hbmpanel.tar.gz
+  retry_cmd curl -fSL "$url" -o /tmp/hbmpanel.tar.gz
   tar -xzf /tmp/hbmpanel.tar.gz -C /tmp/
   install -m 0755 /tmp/hbmpanel "$PANEL_BIN"
   rm -f /tmp/hbmpanel.tar.gz /tmp/hbmpanel
