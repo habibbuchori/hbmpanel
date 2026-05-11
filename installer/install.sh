@@ -300,8 +300,17 @@ panel_download() {
   log "download $url"
   retry_cmd curl -fSL "$url" -o /tmp/hbmpanel.tar.gz
   tar -xzf /tmp/hbmpanel.tar.gz -C /tmp/
-  install -m 0755 /tmp/hbmpanel "$PANEL_BIN"
-  rm -f /tmp/hbmpanel.tar.gz /tmp/hbmpanel
+  # Handle both naming conventions: hbmpanel atau hbmpanel-linux-{arch}
+  local binary_path
+  if [ -f "/tmp/hbmpanel" ]; then
+    binary_path="/tmp/hbmpanel"
+  elif [ -f "/tmp/hbmpanel-linux-${arch}" ]; then
+    binary_path="/tmp/hbmpanel-linux-${arch}"
+  else
+    die "binary tidak ditemukan di archive"
+  fi
+  install -m 0755 "$binary_path" "$PANEL_BIN"
+  rm -f /tmp/hbmpanel.tar.gz /tmp/hbmpanel /tmp/hbmpanel-linux-*
 }
 
 panel_systemd() {
