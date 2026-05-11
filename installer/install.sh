@@ -55,12 +55,12 @@ retry_cmd() {
   local delay=5
 
   while [ $attempt -le $max_attempts ]; do
-    log "attempt $attempt/$max_attempts: $*"
+    log "attempt $attempt/$max_attempts: $*" >&2
     if timeout $timeout "$@"; then
       return 0
     fi
     if [ $attempt -lt $max_attempts ]; then
-      warn "attempt $attempt gagal, retry dalam ${delay}s..."
+      warn "attempt $attempt gagal, retry dalam ${delay}s..." >&2
       sleep $delay
       delay=$((delay + 5))
     fi
