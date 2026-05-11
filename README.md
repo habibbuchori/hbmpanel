@@ -82,12 +82,12 @@ bash scripts/build.sh
 
 ```bash
 # Di server Debian 12 / Ubuntu 24.04 fresh
-bash <(curl -s https://install-panel.hbm.my.id)
+bash <(curl -s https://install-panel.hbm.my.id/install.sh)
 
 # Non-interactive
 HBMPANEL_DOMAIN=panel.example.com \
 HBMPANEL_EMAIL=admin@example.com \
-bash <(curl -s https://install-panel.hbm.my.id)
+bash <(curl -s https://install-panel.hbm.my.id/install.sh)
 ```
 
 Yang dilakukan installer:
