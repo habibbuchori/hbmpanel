@@ -1,0 +1,24 @@
+name = "hbmpanel-license"
+type = "javascript"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# KV Namespace Binding
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+preview_id = "YOUR_PREVIEW_KV_NAMESPACE_ID_HERE"
+
+# Environment variables
+[env.production]
+routes = [
+  { pattern = "license.hbm.my.id/*", zone_name = "hbm.my.id" }
+]
+
+[env.staging]
+routes = [
+  { pattern = "license-staging.hbm.my.id/*", zone_name = "hbm.my.id" }
+]
+
+# Secrets (set via `wrangler secret put`)
+# - ADMIN_KEY: for POST /admin/tokens authentication

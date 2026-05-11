@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -83,6 +84,19 @@ func (s *Store) Migrate() error {
 			detail      TEXT,
 			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE IF NOT EXISTS licenses (
+			id           INTEGER  PRIMARY KEY AUTOINCREMENT,
+			token        TEXT     NOT NULL UNIQUE,
+			machine_id   TEXT     NOT NULL,
+			plan         TEXT     NOT NULL DEFAULT 'free',
+			status       TEXT     NOT NULL DEFAULT 'inactive',
+			features     TEXT     NOT NULL DEFAULT '[]',
+			activated_at DATETIME,
+			expires_at   DATETIME,
+			last_checked DATETIME,
+			last_ok      DATETIME,
+			created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
@@ -131,6 +145,80 @@ func (s *Store) FindUser(username string) (id int64, hash string, role string, e
 }
 
 var ErrNotFound = errors.New("not found")
+
+type License struct {
+	ID          int64
+	Token       string
+	MachineID   string
+	Plan        string
+	Status      string
+	Features    []string
+	ActivatedAt *time.Time
+	ExpiresAt   *time.Time
+	LastChecked *time.Time
+	LastOk      *time.Time
+	CreatedAt   time.Time
+}
+
+func (s *Store) GetLicense() (*License, error) {
+	row := s.db.QueryRow(`
+		SELECT id, token, machine_id, plan, status, features, activated_at, expires_at, last_checked, last_ok, created_at
+		FROM licenses ORDER BY created_at DESC LIMIT 1
+	`)
+	var lic License
+	var featStr string
+	err := row.Scan(&lic.ID, &lic.Token, &lic.MachineID, &lic.Plan, &lic.Status, &featStr,
+		&lic.ActivatedAt, &lic.ExpiresAt, &lic.LastChecked, &lic.LastOk, &lic.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if featStr != "" && featStr != "[]" {
+		_ = json.Unmarshal([]byte(featStr), &lic.Features)
+	}
+	return &lic, nil
+}
+
+func (s *Store) UpsertLicense(lic *License) error {
+	featJSON, _ := json.Marshal(lic.Features)
+	_, err := s.db.Exec(`
+		INSERT INTO licenses (token, machine_id, plan, status, features, activated_at, expires_at, last_checked, last_ok, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(token) DO UPDATE SET
+			machine_id = excluded.machine_id,
+			plan = excluded.plan,
+			status = excluded.status,
+			features = excluded.features,
+			activated_at = excluded.activated_at,
+			expires_at = excluded.expires_at,
+			last_checked = excluded.last_checked,
+			last_ok = excluded.last_ok
+	`, lic.Token, lic.MachineID, lic.Plan, lic.Status, string(featJSON),
+		lic.ActivatedAt, lic.ExpiresAt, lic.LastChecked, lic.LastOk, lic.CreatedAt)
+	return err
+}
+
+func (s *Store) TouchLicenseChecked(token string) error {
+	_, err := s.db.Exec(`UPDATE licenses SET last_checked = ? WHERE token = ?`, time.Now().UTC(), token)
+	return err
+}
+
+func (s *Store) UpdateLicenseFromRemote(token, plan string, features []string, expiresAt *time.Time, isValid bool) error {
+	status := "inactive"
+	if isValid {
+		status = "active"
+	}
+	featJSON, _ := json.Marshal(features)
+	now := time.Now().UTC()
+	_, err := s.db.Exec(`
+		UPDATE licenses
+		SET plan = ?, status = ?, features = ?, expires_at = ?, last_checked = ?, last_ok = ?
+		WHERE token = ?
+	`, plan, status, string(featJSON), expiresAt, now, now, token)
+	return err
+}
 
 func randomPassword(n int) (string, error) {
 	b := make([]byte, n)

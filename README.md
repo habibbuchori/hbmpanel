@@ -115,6 +115,7 @@ Installer **idempotent** — aman dijalankan ulang.
 | SFTP                 | placeholder       |
 | Supervisor           | placeholder       |
 | File Manager         | bridge ke FileBrowser (MVP v0.2) |
+| Multi-PHP            | Run PHP 7.4/8.0/8.1/8.2/8.3/8.4 simultaneously (MVP v0.2) |
 | Web Terminal         | MVP v0.3          |
 | Backup               | MVP v0.3          |
 | Git deployment       | MVP v0.3          |

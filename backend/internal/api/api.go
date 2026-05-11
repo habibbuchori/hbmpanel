@@ -9,6 +9,7 @@ import (
 	"github.com/habibbuchori/hbmpanel/internal/config"
 	"github.com/habibbuchori/hbmpanel/internal/db"
 	"github.com/habibbuchori/hbmpanel/internal/modules/caddy"
+	"github.com/habibbuchori/hbmpanel/internal/modules/license"
 	"github.com/habibbuchori/hbmpanel/internal/modules/pm2"
 	"github.com/habibbuchori/hbmpanel/internal/modules/postgres"
 	"github.com/habibbuchori/hbmpanel/internal/modules/redis"
@@ -35,6 +36,9 @@ func New(cfg *config.Config, store *db.Store) *fiber.App {
 		return c.JSON(fiber.Map{"ok": true, "version": config.Version})
 	})
 
+	// license endpoints (public, no auth)
+	license.Register(app.Group("/api/license"), store)
+
 	// protected
 	api := app.Group("/api", auth.Middleware)
 	api.Post("/auth/logout", auth.HandleLogout)
@@ -52,6 +56,13 @@ func New(cfg *config.Config, store *db.Store) *fiber.App {
 	postgres.Register(api.Group("/postgres"))
 	redis.Register(api.Group("/redis"))
 	ws.Register(api.Group("/ws"))
+
+	// premium := api.Group("", license.RequirePremium(store))
+	// v0.2+ modules registered to premium:
+	// sftp.Register(premium.Group("/sftp"), store)
+	// filemanager.Register(premium.Group("/files"))
+	// backup.Register(premium.Group("/backup"), store)
+	// gitdeploy.Register(premium.Group("/git"), store)
 
 	// embedded frontend (static export)
 	mountStatic(app)
