@@ -1,0 +1,24 @@
+# Build artifacts (root-level only — backend/internal/web/dist/ tetap di-track)
+/dist/
+.dev-data/
+
+# Go
+backend/hbmpanel
+backend/*.exe
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+!backend/internal/web/dist/index.html
+
+# Node
+node_modules/
+.next/
+out/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log

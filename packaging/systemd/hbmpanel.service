@@ -1,0 +1,25 @@
+[Unit]
+Description=HBMPanel - Lightweight Modern App Panel
+Documentation=https://github.com/habibbuchori/hbmpanel
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/hbmpanel serve --port 8443
+Restart=on-failure
+RestartSec=3
+
+Environment=HBMPANEL_HOME=/var/lib/hbmpanel
+Environment=HBMPANEL_LOG=/var/log/hbmpanel
+EnvironmentFile=-/etc/hbmpanel/hbmpanel.env
+
+# Hardening
+NoNewPrivileges=false
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
