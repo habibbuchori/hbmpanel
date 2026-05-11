@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -18,8 +19,8 @@ func secret() []byte {
 	if v := os.Getenv("HBMPANEL_JWT_SECRET"); v != "" {
 		return []byte(v)
 	}
-	// fallback: ephemeral — di production diisi env saat install
-	return []byte("dev-only-change-me")
+	log.Fatal("HBMPANEL_JWT_SECRET env var is required")
+	return nil
 }
 
 type Claims struct {

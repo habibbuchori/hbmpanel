@@ -87,6 +87,9 @@ jobs:
       - name: Show assets
         run: ls -lh dist/
 
+      - name: Checkout (untuk akses installer)
+        uses: actions/checkout@v4
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -94,3 +97,4 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.sha256
+            installer/install.sh

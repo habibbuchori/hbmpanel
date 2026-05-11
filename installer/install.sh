@@ -25,7 +25,7 @@ PANEL_LOG="/var/log/hbmpanel"
 INSTALL_LOG="/var/log/hbmpanel-install.log"
 MARKER_DIR="/var/lib/hbmpanel/.install-markers"
 CHANNEL="${HBMPANEL_CHANNEL:-stable}"
-VERSION="${HBMPANEL_VERSION:-latest}"
+PANEL_VERSION="${HBMPANEL_VERSION:-latest}"
 PANEL_PORT="${HBMPANEL_PORT:-8443}"
 PANEL_DOMAIN="${HBMPANEL_DOMAIN:-}"
 PANEL_EMAIL="${HBMPANEL_EMAIL:-}"
@@ -261,7 +261,7 @@ panel_download() {
     aarch64) arch="arm64";;
   esac
 
-  if [ "$VERSION" = "latest" ]; then
+  if [ "$PANEL_VERSION" = "latest" ]; then
     tag=$(curl -fsSL "https://api.github.com/repos/${GH_REPO}/releases/latest" \
       | jq -r '.tag_name' 2>/dev/null || echo "")
     if [ -z "$tag" ] || [ "$tag" = "null" ]; then
@@ -270,7 +270,7 @@ panel_download() {
       return 0
     fi
   else
-    tag="$VERSION"
+    tag="$PANEL_VERSION"
   fi
 
   url="https://github.com/${GH_REPO}/releases/download/${tag}/hbmpanel-linux-${arch}.tar.gz"
@@ -282,6 +282,9 @@ panel_download() {
 }
 
 panel_systemd() {
+  local jwt_secret
+  jwt_secret=$(openssl rand -hex 32)
+
   cat >/etc/systemd/system/hbmpanel.service <<EOF
 [Unit]
 Description=HBMPanel
@@ -295,6 +298,7 @@ Restart=on-failure
 RestartSec=3
 Environment=HBMPANEL_HOME=${PANEL_HOME}
 Environment=HBMPANEL_LOG=${PANEL_LOG}
+Environment=HBMPANEL_JWT_SECRET=${jwt_secret}
 
 [Install]
 WantedBy=multi-user.target
