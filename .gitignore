@@ -20,5 +20,8 @@ out/
 *.swp
 .DS_Store
 
+# Claude Code per-user settings (jangan commit)
+.claude/settings.local.json
+
 # Logs
 *.log
