@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { Button, Card, Input } from "@/components/ui";
 import { api, fetcher } from "@/lib/api";
-import { Trash2, Power, PowerOff, RefreshCw, FileText, KeyRound, X } from "lucide-react";
+import { Trash2, Power, PowerOff, RefreshCw, FileText, KeyRound, X, Code2 } from "lucide-react";
 
 type Site = {
   id: number;
   domain: string;
   type: string;
   root_path: string;
+  php_version?: string;
   ssl: boolean;
   status: string;
   node_port?: number;
@@ -18,12 +19,13 @@ type Site = {
 export default function SitesPage() {
   const { data: sites } = useSWR<Site[]>("/api/sites/", fetcher);
   const [form, setForm] = useState({
-    domain: "", type: "php", root_path: "/var/www/html", node_port: 0, ssl: true,
+    domain: "", type: "php", root_path: "", php_version: "8.4", node_port: 0, ssl: true,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [envEditor, setEnvEditor] = useState<Site | null>(null);
   const [logViewer, setLogViewer] = useState<Site | null>(null);
+  const [caddyEditor, setCaddyEditor] = useState<Site | null>(null);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -31,7 +33,7 @@ export default function SitesPage() {
     setErr(null);
     try {
       await api("/api/sites/", { method: "POST", body: JSON.stringify(form) });
-      setForm({ domain: "", type: "php", root_path: "/var/www/html", node_port: 0, ssl: true });
+      setForm({ domain: "", type: "php", root_path: "", php_version: "8.4", node_port: 0, ssl: true });
       mutate("/api/sites/");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "gagal");
@@ -57,25 +59,55 @@ export default function SitesPage() {
 
       <Card>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-3">Create site</h2>
-        <form onSubmit={create} className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Input placeholder="domain (example.com)"
-            value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} />
-          <select className="rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm"
-            value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-            <option value="php">PHP / Laravel</option>
-            <option value="static">Static</option>
-            <option value="node">Node.js (reverse proxy)</option>
-            <option value="proxy">Proxy</option>
-          </select>
-          {(form.type === "php" || form.type === "static") ? (
-            <Input placeholder="root path"
-              value={form.root_path} onChange={(e) => setForm({ ...form, root_path: e.target.value })} />
-          ) : (
-            <Input type="number" placeholder="node port"
-              value={form.node_port || ""}
-              onChange={(e) => setForm({ ...form, node_port: Number(e.target.value) })} />
-          )}
-          <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create"}</Button>
+        <form onSubmit={create} className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Input placeholder="domain (example.com)"
+              value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} />
+            <select className="rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm"
+              value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="php">PHP / Laravel</option>
+              <option value="static">Static</option>
+              <option value="node">Node.js (reverse proxy)</option>
+              <option value="proxy">Proxy</option>
+            </select>
+            {(form.type === "php" || form.type === "static") ? (
+              <div>
+                <Input placeholder="/var/www/namaproject/public"
+                  value={form.root_path} onChange={(e) => setForm({ ...form, root_path: e.target.value })} />
+                {form.type === "php" && (
+                  <p className="text-xs text-muted mt-1">Laravel: /var/www/namaproject/public</p>
+                )}
+              </div>
+            ) : (
+              <Input type="number" placeholder="node port"
+                value={form.node_port || ""}
+                onChange={(e) => setForm({ ...form, node_port: Number(e.target.value) })} />
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {form.type === "php" && (
+              <select
+                className="rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-sm"
+                value={form.php_version}
+                onChange={(e) => setForm({ ...form, php_version: e.target.value })}
+              >
+                <option value="8.1">PHP 8.1</option>
+                <option value="8.2">PHP 8.2</option>
+                <option value="8.3">PHP 8.3</option>
+                <option value="8.4">PHP 8.4</option>
+              </select>
+            )}
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.ssl}
+                onChange={(e) => setForm({ ...form, ssl: e.target.checked })}
+                className="rounded"
+              />
+              SSL
+            </label>
+            <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create"}</Button>
+          </div>
         </form>
         {err && <div className="mt-2 text-xs text-red-400">{err}</div>}
       </Card>
@@ -111,6 +143,9 @@ export default function SitesPage() {
                 <Button variant="ghost" onClick={() => setLogViewer(s)}>
                   <FileText size={14} /> Logs
                 </Button>
+                <Button variant="ghost" onClick={() => setCaddyEditor(s)}>
+                  <Code2 size={14} /> Caddy
+                </Button>
                 <Button variant="danger" onClick={() => remove(s.id)}>
                   <Trash2 size={14} /> Delete
                 </Button>
@@ -125,6 +160,7 @@ export default function SitesPage() {
 
       {envEditor && <EnvEditor site={envEditor} onClose={() => setEnvEditor(null)} />}
       {logViewer && <LogModal site={logViewer} onClose={() => setLogViewer(null)} />}
+      {caddyEditor && <CaddyModal site={caddyEditor} onClose={() => setCaddyEditor(null)} />}
     </div>
   );
 }
@@ -200,6 +236,47 @@ function LogModal({ site, onClose }: { site: Site; onClose: () => void }) {
       >
         {lines.length === 0 && <div className="text-muted">connecting…</div>}
         {lines.map((l, i) => <div key={i} className="whitespace-pre">{l}</div>)}
+      </div>
+    </Modal>
+  );
+}
+
+function CaddyModal({ site, onClose }: { site: Site; onClose: () => void }) {
+  const { data } = useSWR<{ content: string }>(`/api/sites/${site.id}/caddy`, fetcher);
+  const [text, setText] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const current = text ?? data?.content ?? "";
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      await api(`/api/sites/${site.id}/caddy`, {
+        method: "PUT",
+        body: JSON.stringify({ content: current }),
+      });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "gagal");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={`Caddy config · ${site.domain}`} onClose={onClose}>
+      <textarea
+        value={current}
+        onChange={(e) => setText(e.target.value)}
+        className="h-80 w-full rounded-xl bg-black/30 border border-white/15 px-3 py-2 font-mono text-xs"
+        spellCheck={false}
+      />
+      {err && <div className="text-xs text-red-300">{err}</div>}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

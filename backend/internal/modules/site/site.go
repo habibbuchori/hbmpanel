@@ -24,6 +24,8 @@ func Register(r fiber.Router, store *db.Store) {
 	r.Post("/:id/disable", h.disable)
 	r.Get("/:id/env", h.getEnv)
 	r.Put("/:id/env", h.putEnv)
+	r.Get("/:id/caddy", h.getCaddy)
+	r.Put("/:id/caddy", h.putCaddy)
 }
 
 type handler struct{ store *db.Store }
@@ -108,11 +110,12 @@ func (h *handler) create(c *fiber.Ctx) error {
 	id, _ := res.LastInsertId()
 
 	if err := caddy.WriteSite(caddy.SiteConfig{
-		Domain:   body.Domain,
-		Type:     body.Type,
-		Root:     body.RootPath,
-		NodePort: body.NodePort,
-		SSL:      body.SSL,
+		Domain:     body.Domain,
+		Type:       body.Type,
+		Root:       body.RootPath,
+		PHPVersion: body.PHPVersion,
+		NodePort:   body.NodePort,
+		SSL:        body.SSL,
 	}); err != nil {
 		// rollback DB
 		_, _ = h.store.DB().Exec(`DELETE FROM sites WHERE id = ?`, id)
@@ -160,11 +163,12 @@ func (h *handler) restart(c *fiber.Ctx) error {
 	}
 	// Rewrite caddyfile (idempotent) + reload caddy.
 	if err := caddy.WriteSite(caddy.SiteConfig{
-		Domain:   s.Domain,
-		Type:     s.Type,
-		Root:     s.RootPath,
-		NodePort: s.NodePort,
-		SSL:      s.SSL,
+		Domain:     s.Domain,
+		Type:       s.Type,
+		Root:       s.RootPath,
+		PHPVersion: s.PHPVersion,
+		NodePort:   s.NodePort,
+		SSL:        s.SSL,
 	}); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "caddy: "+err.Error())
 	}
@@ -237,6 +241,35 @@ func (h *handler) putEnv(c *fiber.Ctx) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fiber.NewError(fiber.StatusNotFound, "not found")
+	}
+	return c.JSON(fiber.Map{"ok": true})
+}
+
+func (h *handler) getCaddy(c *fiber.Ctx) error {
+	s, err := h.loadSite(c.Params("id"))
+	if err != nil {
+		return err
+	}
+	content, err := caddy.ReadSite(s.Domain)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, err.Error())
+	}
+	return c.JSON(fiber.Map{"content": content})
+}
+
+func (h *handler) putCaddy(c *fiber.Ctx) error {
+	s, err := h.loadSite(c.Params("id"))
+	if err != nil {
+		return err
+	}
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "bad body")
+	}
+	if err := caddy.WriteRawSite(s.Domain, body.Content); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(fiber.Map{"ok": true})
 }

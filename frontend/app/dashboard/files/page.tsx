@@ -26,8 +26,8 @@ const fmtSize = (n: number) =>
   n >= 1e3 ? (n / 1e3).toFixed(1) + " KB" : n + " B";
 
 export default function FilesPage() {
-  const [path, setPath] = useState("/var/www");
-  const [pathInput, setPathInput] = useState("/var/www");
+  const [path, setPath] = useState("/var/www/html");
+  const [pathInput, setPathInput] = useState("/var/www/html");
   const { data, error } = useSWR<ListResp>(`/api/files/list?path=${encodeURIComponent(path)}`, fetcher);
   const fileInput = useRef<HTMLInputElement>(null);
   const [editor, setEditor] = useState<Entry | null>(null);

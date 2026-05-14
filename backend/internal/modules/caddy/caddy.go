@@ -47,7 +47,8 @@ type SiteConfig struct {
 	Domain     string
 	Type       string // php | static | node | proxy
 	Root       string
-	PHPSocket  string // e.g. /run/php/php8.4-fpm.sock
+	PHPSocket  string // override manual; jika kosong dihitung dari PHPVersion
+	PHPVersion string // e.g. "8.4" → /run/php/php8.4-fpm.sock
 	NodePort   int
 	SSL        bool
 }
@@ -109,6 +110,28 @@ func EnableSite(domain string) error {
 	return exec.Command("systemctl", "reload", "caddy").Run()
 }
 
+func ReadSite(domain string) (string, error) {
+	for _, suffix := range []string{".caddy", ".caddy.disabled"} {
+		path := filepath.Join(siteDir, domain+suffix)
+		b, err := os.ReadFile(path)
+		if err == nil {
+			return string(b), nil
+		}
+	}
+	return "", fmt.Errorf("caddyfile not found for %s", domain)
+}
+
+func WriteRawSite(domain, content string) error {
+	if !domainRe.MatchString(domain) {
+		return fmt.Errorf("domain invalid")
+	}
+	path := filepath.Join(siteDir, domain+".caddy")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return exec.Command("systemctl", "reload", "caddy").Run()
+}
+
 func ReloadCaddy() error {
 	return exec.Command("systemctl", "reload", "caddy").Run()
 }
@@ -127,6 +150,9 @@ func renderConfig(s SiteConfig) (string, error) {
 	switch s.Type {
 	case "php":
 		socket := s.PHPSocket
+		if socket == "" && s.PHPVersion != "" {
+			socket = "/run/php/php" + s.PHPVersion + "-fpm.sock"
+		}
 		if socket == "" {
 			socket = "/run/php/php8.4-fpm.sock"
 		}
