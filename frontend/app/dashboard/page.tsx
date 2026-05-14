@@ -8,6 +8,12 @@ type Stats = {
   load_avg: string;
   mem_total: number;
   mem_free: number;
+  disk_total: number;
+  disk_free: number;
+  site_count: number;
+  pm2_count: number;
+  redis_used: string;
+  postgres_status: string;
   uptime: string;
   hostname: string;
 };
@@ -22,30 +28,41 @@ export default function OverviewPage() {
 
   const memUsed = stats ? stats.mem_total - stats.mem_free : 0;
   const memPct = stats && stats.mem_total > 0 ? Math.round((memUsed / stats.mem_total) * 100) : 0;
+  const diskUsed = stats ? stats.disk_total - stats.disk_free : 0;
+  const diskPct = stats && stats.disk_total > 0 ? Math.round((diskUsed / stats.disk_total) * 100) : 0;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Overview</h1>
+      <div className="rounded-3xl border border-white/10 bg-gradient-to-r from-brand/15 via-candy/15 to-sunny/10 p-6 shadow-xl shadow-black/10">
+        <div className="text-sm font-bold uppercase tracking-wider text-brand">✨ Server vibes</div>
+        <h1 className="mt-1 text-3xl font-black">Overview</h1>
         <p className="text-sm text-muted">{stats?.hostname ?? "—"} · {stats?.uptime ?? ""}</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile label="CPU cores" value={stats?.cpu_count ?? "—"} />
-        <StatTile label="Load avg"  value={(stats?.load_avg ?? "—").split(" ").slice(0, 3).join(" ")} />
-        <StatTile label="Memory"    value={`${memPct}%`} hint={stats ? `${fmtBytes(memUsed)} / ${fmtBytes(stats.mem_total)}` : ""} />
-        <StatTile label="Sites"     value={"—"} hint="will count from API" />
+        <StatTile label="🧠 CPU cores" value={stats?.cpu_count ?? "—"} />
+        <StatTile label="⚡ Load avg"  value={(stats?.load_avg ?? "—").split(" ").slice(0, 3).join(" ")} />
+        <StatTile label="🌈 Memory"    value={`${memPct}%`} hint={stats ? `${fmtBytes(memUsed)} / ${fmtBytes(stats.mem_total)}` : ""} />
+        <StatTile label="💾 Disk"      value={`${diskPct}%`} hint={stats ? `${fmtBytes(diskUsed)} / ${fmtBytes(stats.disk_total)}` : ""} />
+        <StatTile label="🌍 Sites"     value={stats?.site_count ?? "—"} hint="caddy vhosts" />
+        <StatTile label="🚀 PM2 apps"  value={stats?.pm2_count ?? "—"} hint="node processes" />
+        <StatTile label="🟥 Redis"     value={stats?.redis_used || "—"} hint="memory used" />
+        <StatTile
+          label="🐘 Postgres"
+          value={stats?.postgres_status || "—"}
+          hint={stats?.postgres_status === "active" ? "running" : "check service"}
+        />
       </div>
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Services</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-muted">Services playground</h2>
         </div>
-        <div className="divide-y divide-line">
+        <div className="divide-y divide-white/10">
           {(services ?? []).map((s) => (
             <div key={s.name} className="flex items-center justify-between py-2 text-sm">
               <span className="font-mono">{s.name}</span>
-              <span className={s.active === "active" ? "text-green-400" : "text-muted"}>
+              <span className={s.active === "active" ? "text-mint" : "text-muted"}>
                 {s.active} · {s.sub}
               </span>
             </div>

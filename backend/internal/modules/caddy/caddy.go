@@ -76,11 +76,45 @@ func RemoveSite(domain string) error {
 	if !domainRe.MatchString(domain) {
 		return fmt.Errorf("domain invalid")
 	}
-	path := filepath.Join(siteDir, domain+".caddy")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	for _, suffix := range []string{".caddy", ".caddy.disabled"} {
+		path := filepath.Join(siteDir, domain+suffix)
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return exec.Command("systemctl", "reload", "caddy").Run()
+}
+
+func DisableSite(domain string) error {
+	if !domainRe.MatchString(domain) {
+		return fmt.Errorf("domain invalid")
+	}
+	src := filepath.Join(siteDir, domain+".caddy")
+	dst := filepath.Join(siteDir, domain+".caddy.disabled")
+	if err := os.Rename(src, dst); err != nil {
 		return err
 	}
 	return exec.Command("systemctl", "reload", "caddy").Run()
+}
+
+func EnableSite(domain string) error {
+	if !domainRe.MatchString(domain) {
+		return fmt.Errorf("domain invalid")
+	}
+	src := filepath.Join(siteDir, domain+".caddy.disabled")
+	dst := filepath.Join(siteDir, domain+".caddy")
+	if err := os.Rename(src, dst); err != nil {
+		return err
+	}
+	return exec.Command("systemctl", "reload", "caddy").Run()
+}
+
+func ReloadCaddy() error {
+	return exec.Command("systemctl", "reload", "caddy").Run()
+}
+
+func SiteLogPath(domain string) string {
+	return filepath.Join("/var/log/caddy", domain+".log")
 }
 
 func renderConfig(s SiteConfig) (string, error) {
@@ -111,6 +145,7 @@ func renderConfig(s SiteConfig) (string, error) {
 		return "", fmt.Errorf("unknown site type: %s", s.Type)
 	}
 	b.WriteString("    encode gzip zstd\n")
+	fmt.Fprintf(&b, "    log {\n        output file %s\n    }\n", SiteLogPath(s.Domain))
 	b.WriteString("}\n")
 	return b.String(), nil
 }

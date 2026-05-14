@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -34,11 +35,13 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS users (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			username    TEXT    NOT NULL UNIQUE,
-			password    TEXT    NOT NULL,
-			role        TEXT    NOT NULL DEFAULT 'admin',
-			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			username      TEXT    NOT NULL UNIQUE,
+			password      TEXT    NOT NULL,
+			role          TEXT    NOT NULL DEFAULT 'admin',
+			totp_secret   TEXT,
+			totp_enabled  INTEGER NOT NULL DEFAULT 0,
+			created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS sites (
 			id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,10 +100,43 @@ func (s *Store) Migrate() error {
 			last_ok      DATETIME,
 			created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE IF NOT EXISTS backups (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			kind        TEXT    NOT NULL,         -- 'site' | 'db'
+			target      TEXT    NOT NULL,         -- site id (as string) | db name
+			label       TEXT    NOT NULL,         -- human readable
+			file_path   TEXT    NOT NULL UNIQUE,
+			size_bytes  INTEGER NOT NULL DEFAULT 0,
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS git_deployments (
+			site_id           INTEGER PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+			repo              TEXT    NOT NULL,
+			branch            TEXT    NOT NULL DEFAULT 'main',
+			deploy_cmd        TEXT,
+			last_commit       TEXT,
+			last_deployed_at  DATETIME,
+			last_output       TEXT,
+			updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
 			return fmt.Errorf("migrate: %w (%s)", err, q[:40])
+		}
+	}
+	// Idempotent column additions for existing DBs (pre-P2).
+	for _, alter := range []string{
+		`ALTER TABLE users ADD COLUMN totp_secret TEXT`,
+		`ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := s.db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrate alter: %w (%s)", err, alter)
 		}
 	}
 	return nil
@@ -134,14 +170,119 @@ func (s *Store) EnsureInitialAdmin(username string) (string, error) {
 	return plain, nil
 }
 
-// FindUser → mengambil user untuk login.
-func (s *Store) FindUser(username string) (id int64, hash string, role string, err error) {
-	row := s.db.QueryRow(`SELECT id, password, role FROM users WHERE username = ?`, username)
-	err = row.Scan(&id, &hash, &role)
+// FindUser → mengambil user untuk login (termasuk status 2FA).
+func (s *Store) FindUser(username string) (id int64, hash, role string, totpEnabled bool, err error) {
+	row := s.db.QueryRow(`SELECT id, password, role, COALESCE(totp_enabled,0) FROM users WHERE username = ?`, username)
+	var en int
+	err = row.Scan(&id, &hash, &role, &en)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", "", ErrNotFound
+		return 0, "", "", false, ErrNotFound
 	}
+	totpEnabled = en != 0
 	return
+}
+
+func (s *Store) GetUserTOTP(id int64) (secret string, enabled bool, err error) {
+	var sec sql.NullString
+	var en int
+	err = s.db.QueryRow(`SELECT totp_secret, COALESCE(totp_enabled,0) FROM users WHERE id=?`, id).Scan(&sec, &en)
+	return sec.String, en != 0, err
+}
+
+func (s *Store) SetUserTOTP(id int64, secret string, enabled bool) error {
+	en := 0
+	if enabled {
+		en = 1
+	}
+	var sec any = secret
+	if secret == "" {
+		sec = nil
+	}
+	_, err := s.db.Exec(`UPDATE users SET totp_secret=?, totp_enabled=? WHERE id=?`, sec, en, id)
+	return err
+}
+
+func (s *Store) UpdatePassword(id int64, newHash string) error {
+	_, err := s.db.Exec(`UPDATE users SET password=? WHERE id=?`, newHash, id)
+	return err
+}
+
+func (s *Store) UpdatePasswordByName(username, newHash string) (int64, error) {
+	res, err := s.db.Exec(`UPDATE users SET password=? WHERE username=?`, newHash, username)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ---------- settings ----------
+
+func (s *Store) GetSetting(key string) (string, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO settings (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value
+	`, key, value)
+	return err
+}
+
+// ---------- audit log ----------
+
+type AuditRow struct {
+	ID        int64     `json:"id"`
+	UserID    *int64    `json:"user_id,omitempty"`
+	Action    string    `json:"action"`
+	Target    string    `json:"target,omitempty"`
+	Detail    string    `json:"detail,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *Store) WriteAudit(userID int64, action, target, detail string) {
+	var uid any = userID
+	if userID == 0 {
+		uid = nil
+	}
+	// Fire-and-forget; tidak boleh fatal jika DB sibuk.
+	_, _ = s.db.Exec(
+		`INSERT INTO audit_log (user_id, action, target, detail) VALUES (?, ?, ?, ?)`,
+		uid, action, target, detail,
+	)
+}
+
+func (s *Store) ListAudit(limit, offset int) ([]AuditRow, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	rows, err := s.db.Query(`SELECT id, user_id, action, COALESCE(target,''), COALESCE(detail,''), created_at
+		FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AuditRow{}
+	for rows.Next() {
+		var a AuditRow
+		var uid sql.NullInt64
+		if err := rows.Scan(&a.ID, &uid, &a.Action, &a.Target, &a.Detail, &a.CreatedAt); err != nil {
+			continue
+		}
+		if uid.Valid {
+			a.UserID = &uid.Int64
+		}
+		out = append(out, a)
+	}
+	return out, nil
 }
 
 var ErrNotFound = errors.New("not found")

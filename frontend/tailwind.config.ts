@@ -6,12 +6,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg:    "#0a0a0b",
-        panel: "#111113",
-        line:  "#1f1f23",
-        muted: "#8a8a93",
-        fg:    "#e9e9ee",
-        brand: "#22d3ee",
+        bg:    "#0f1028",
+        panel: "#181a3a",
+        line:  "#2d315f",
+        muted: "#a8b0d8",
+        fg:    "#f8fbff",
+        brand: "#7dd3fc",
+        candy: "#f0abfc",
+        sunny: "#fde68a",
+        mint:  "#86efac",
       },
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "Inter", "sans-serif"],

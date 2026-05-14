@@ -1,0 +1,15 @@
+# Tandai build artefak Next.js sebagai generated supaya:
+#   - GitHub PR diff collapse by default
+#   - language stats di repo home tidak terhitung sebagai "HTML/JS asli"
+#   - `git log --follow` / blame skip file ini
+backend/internal/web/dist/** linguist-generated=true
+
+# Lock files juga generated, jangan dihitung di language stats
+**/package-lock.json linguist-generated=true
+**/go.sum             linguist-generated=true
+
+# Hindari konversi line ending pada shell script & Go source (LF wajib)
+*.sh    text eol=lf
+*.go    text eol=lf
+*.mjs   text eol=lf
+*.toml  text eol=lf

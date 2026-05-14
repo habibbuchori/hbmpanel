@@ -13,6 +13,10 @@ backend/internal/web/dist/*
 node_modules/
 .next/
 out/
+tsconfig.tsbuildinfo
+
+# Cloudflare Worker
+cloudflare-worker/.wrangler/
 
 # Editor
 .vscode/

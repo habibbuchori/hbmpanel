@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/habibbuchori/hbmpanel/internal/api"
 	"github.com/habibbuchori/hbmpanel/internal/config"
@@ -31,6 +34,8 @@ func main() {
 		cmdServe(os.Args[2:])
 	case "init":
 		cmdInit(os.Args[2:])
+	case "reset-password":
+		cmdResetPassword(os.Args[2:])
 	case "version":
 		fmt.Println("hbmpanel", config.Version)
 	case "-h", "--help", "help":
@@ -46,10 +51,58 @@ func usage() {
 	fmt.Print(banner)
 	fmt.Println(`
 Usage:
-  hbmpanel serve [--port 8443]      Jalankan panel HTTP server
-  hbmpanel init  [--home PATH]      Inisialisasi data direktori + admin pertama
-  hbmpanel version                  Tampilkan versi
+  hbmpanel serve [--port 8443]                 Jalankan panel HTTP server
+  hbmpanel init  [--home PATH]                 Inisialisasi data direktori + admin pertama
+  hbmpanel reset-password [--user admin]       Reset password (print password baru ke stdout)
+  hbmpanel version                             Tampilkan versi
 `)
+}
+
+func cmdResetPassword(args []string) {
+	fs := flag.NewFlagSet("reset-password", flag.ExitOnError)
+	home := fs.String("home", envOr("HBMPANEL_HOME", "/var/lib/hbmpanel"), "direktori data panel")
+	user := fs.String("user", "admin", "username")
+	_ = fs.Parse(args)
+
+	store, err := db.Open(filepath.Join(*home, "panel.db"))
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
+	plain, err := generatePassword(18)
+	if err != nil {
+		log.Fatalf("rand: %v", err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(plain), 12)
+	if err != nil {
+		log.Fatalf("bcrypt: %v", err)
+	}
+	n, err := store.UpdatePasswordByName(*user, string(hash))
+	if err != nil {
+		log.Fatalf("update: %v", err)
+	}
+	if n == 0 {
+		fmt.Fprintf(os.Stderr, "user %q tidak ditemukan\n", *user)
+		os.Exit(1)
+	}
+	fmt.Printf("\n  Password baru untuk %s:\n  %s\n\n", *user, plain)
+	fmt.Println("  Simpan & login lewat web panel sekarang juga.")
+}
+
+func generatePassword(n int) (string, error) {
+	const charset = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+	return string(b), nil
 }
 
 func cmdServe(args []string) {

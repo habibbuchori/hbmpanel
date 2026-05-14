@@ -4,7 +4,11 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Requested-With": "hbmpanel",
+      ...(init.headers || {}),
+    },
     ...init,
   });
   if (!res.ok) {
