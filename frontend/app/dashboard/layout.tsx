@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   LayoutDashboard, Globe, Server, Database, FileText, Settings, LogOut, Sparkles,
-  Terminal, Users, FolderTree, Archive, GitBranch, ShieldCheck, Key,
+  Terminal, Users, FolderTree, Archive, GitBranch, ShieldCheck, Key, Ticket,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -23,6 +23,7 @@ const nav = [
   { href: "/dashboard/sftp",     label: "SFTP",       icon: Users,           premium: true  },
   { href: "/dashboard/backups",  label: "Backups",    icon: Archive,         premium: true  },
   { href: "/dashboard/git",      label: "Git Deploy", icon: GitBranch,       premium: true  },
+  { href: "/dashboard/license",  label: "License gen", icon: Ticket,          premium: false },
   { href: "/dashboard/settings", label: "Settings",   icon: Settings,        premium: false },
 ];
 

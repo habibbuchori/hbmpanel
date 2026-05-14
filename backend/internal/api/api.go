@@ -95,6 +95,7 @@ func New(cfg *config.Config, store *db.Store) *fiber.App {
 	audit.Register(api.Group("/audit"), store)
 	sshkeys.Register(api.Group("/sshkeys"), store)
 	ipState.Register(api.Group("/settings/ip-whitelist"))
+	license.RegisterAdmin(api.Group("/admin/license"))
 
 	// v0.2+ premium modules — gated by RequirePremium.
 	premium := api.Group("", license.RequirePremium(store))
